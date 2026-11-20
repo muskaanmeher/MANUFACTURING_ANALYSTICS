@@ -1,0 +1,328 @@
+create database manufacture_analytics;
+
+-- 1. Production KPI
+SELECT
+    SUM(Produced_Qty) AS Total_Produced_Qty,
+    ROUND(AVG(Efficiency_Rate_Pct), 2) AS Avg_Efficiency_Rate,
+    ROUND(AVG(Machine_Utilization_Pct), 2) AS Avg_Machine_Utilization,
+    ROUND(AVG(Cost_per_Unit), 2) AS Avg_Cost_Per_Unit
+FROM fact_production;
+
+-- Production by Department
+SELECT
+    Dept_id,
+    SUM(Produced_Qty) AS Total_Produced_Qty,
+    ROUND(AVG(Efficiency_Rate_Pct), 2) AS Avg_Efficiency,
+    ROUND(AVG(Machine_Utilization_Pct), 2) AS Avg_Utilization,
+    ROUND(AVG(Cost_per_Unit), 2) AS Avg_Cost_Per_Unit
+FROM fact_production
+GROUP BY Dept_id
+ORDER BY Total_Produced_Qty DESC;
+
+--  Production by Machine
+SELECT
+    m.Machine_Code,
+    m.Machine_Type,
+    m.Status,
+    SUM(f.Produced_Qty) AS Total_Produced_Qty,
+    SUM(f.Rejected_Qty) AS Total_Rejected_Qty,
+    ROUND(AVG(f.Machine_Utilization_Pct), 2) AS Avg_Utilization,
+    ROUND(AVG(f.Cost_per_Unit), 2) AS Avg_Cost_Per_Unit
+FROM fact_production f
+JOIN dim_machine m
+    ON f.Machine_Code = m.Machine_Code
+GROUP BY
+    m.Machine_Code,
+    m.Machine_Type,
+    m.Status
+ORDER BY Total_Produced_Qty DESC;
+
+-- 2. Quality KPI
+-- Total Rejected Quantity
+SELECT
+    SUM(Rejected_Qty) AS Total_Rejected_Qty
+FROM fact_production;
+
+--  Overall Rejection Rate
+SELECT
+    ROUND(
+        SUM(Rejected_Qty) * 100.0 /
+        NULLIF(SUM(Produced_Qty), 0),
+        2
+    ) AS Overall_Rejection_Rate
+FROM fact_production;
+
+-- Total Processed Quantity
+SELECT
+    SUM(Processed_Qty) AS Total_Processed_Qty
+FROM fact_production;
+
+-- Wastage %
+SELECT
+    ROUND(
+        SUM(Rejected_Qty) * 100.0 /
+        NULLIF(SUM(Processed_Qty), 0),
+        2
+    ) AS Wastage_Percentage
+FROM fact_production;
+
+--  Machine-wise Rejected Quantity
+SELECT
+    m.Machine_Code,
+    m.Machine_Type,
+    m.Status,
+    SUM(f.Rejected_Qty) AS Total_Rejected_Qty
+FROM fact_production f
+JOIN dim_machine m
+    ON f.Machine_Code = m.Machine_Code
+GROUP BY
+    m.Machine_Code,
+    m.Machine_Type,
+    m.Status
+ORDER BY Total_Rejected_Qty DESC;
+
+--  Operation-wise Rejected Quantity
+SELECT
+    o.Operation_Code,
+    o.Operation_Name,
+    SUM(f.Rejected_Qty) AS Total_Rejected_Qty
+FROM fact_production f
+JOIN dim_operation o
+    ON f.Operation_Code = o.Operation_Code
+GROUP BY
+    o.Operation_Code,
+    o.Operation_Name
+ORDER BY Total_Rejected_Qty DESC;
+
+-- Employee-wise Rejected Quantity
+SELECT
+    Employee_Code,
+    SUM(Rejected_Qty) AS Total_Rejected_Qty
+FROM fact_production
+GROUP BY
+    Employee_Code
+ORDER BY Total_Rejected_Qty DESC;
+
+-- 3.Delivery KPIs
+--  Delivery Status Count
+SELECT
+    Delivery_Status,
+    COUNT(*) AS Order_Count
+FROM fact_production
+GROUP BY Delivery_Status
+ORDER BY Order_Count DESC;
+
+-- Delivery Performance by Department
+SELECT
+    Dept_ID,
+    COUNT(*) AS Total_Orders,
+    SUM(
+        CASE
+            WHEN Delivery_Status = 'On Time' THEN 1
+            ELSE 0
+        END
+    ) AS On_Time_Orders,
+    SUM(
+        CASE
+            WHEN Delivery_Status = 'Late' THEN 1
+            ELSE 0
+        END
+    ) AS Late_Orders,
+    ROUND(
+        SUM(
+            CASE
+                WHEN Delivery_Status = 'On Time' THEN 1
+                ELSE 0
+            END
+        ) * 100.0 / NULLIF(COUNT(*), 0),
+        2
+    ) AS On_Time_Percentage
+FROM fact_production
+GROUP BY Dept_ID
+ORDER BY On_Time_Percentage DESC;
+
+--  Delivery Performance by Machine
+SELECT
+    m.Machine_Code,
+    m.Machine_Type,
+    COUNT(*) AS Total_Orders,
+    SUM(
+        CASE
+            WHEN f.Delivery_Status = 'Late' THEN 1
+            ELSE 0
+        END
+    ) AS Late_Orders,
+    ROUND(
+        SUM(
+            CASE
+                WHEN f.Delivery_Status = 'Late' THEN 1
+                ELSE 0
+            END
+        ) * 100.0 / NULLIF(COUNT(*), 0),
+        2
+    ) AS Late_Percentage
+FROM fact_production f
+JOIN dim_machine m
+    ON f.Machine_Code = m.Machine_Code
+GROUP BY
+    m.Machine_Code,
+    m.Machine_Type
+ORDER BY Late_Percentage DESC;
+
+-- Top 10 Machines with Late Orders
+SELECT
+    m.Machine_Code,
+    m.Machine_Type,
+    COUNT(*) AS Late_Orders
+FROM fact_production f
+JOIN dim_machine m
+    ON f.Machine_Code = m.Machine_Code
+WHERE f.Delivery_Status = 'Late'
+GROUP BY
+    m.Machine_Code,
+    m.Machine_Type
+ORDER BY Late_Orders DESC
+LIMIT 10;
+
+-- 4.Machine Performance Analysis
+-- Machine-wise Production
+SELECT
+    m.Machine_Code,
+    m.Machine_Type,
+    m.Status,
+    SUM(f.Produced_Qty) AS Total_Produced_Qty
+FROM fact_production f
+JOIN dim_machine m
+    ON f.Machine_Code = m.Machine_Code
+GROUP BY
+    m.Machine_Code,
+    m.Machine_Type,
+    m.Status
+ORDER BY Total_Produced_Qty DESC;
+
+-- Machine Utilization
+SELECT
+    m.Machine_Code,
+    m.Machine_Type,
+    ROUND(AVG(f.Machine_Utilization_Pct), 2) AS Avg_Utilization
+FROM fact_production f
+JOIN dim_machine m
+    ON f.Machine_Code = m.Machine_Code
+GROUP BY
+    m.Machine_Code,
+    m.Machine_Type
+ORDER BY Avg_Utilization DESC;
+
+--  Machine Efficiency
+SELECT
+    m.Machine_Code,
+    m.Machine_Type,
+    ROUND(AVG(f.Efficiency_Rate_Pct), 2) AS Avg_Efficiency
+FROM fact_production f
+JOIN dim_machine m
+    ON f.Machine_Code = m.Machine_Code
+GROUP BY
+    m.Machine_Code,
+    m.Machine_Type
+ORDER BY Avg_Efficiency DESC;
+
+--  Machine Cost
+SELECT
+    m.Machine_Code,
+    m.Machine_Type,
+    ROUND(SUM(f.Per_Day_Machine_Cost), 2) AS Total_Machine_Cost
+FROM fact_production f
+JOIN dim_machine m
+    ON f.Machine_Code = m.Machine_Code
+GROUP BY
+    m.Machine_Code,
+    m.Machine_Type
+ORDER BY Total_Machine_Cost DESC;
+
+-- 5.Employee Analysis
+-- Employee-wise Production
+SELECT
+    f.Employee_Code,
+    SUM(f.Produced_Qty) AS Total_Produced_Qty
+FROM fact_production f
+GROUP BY
+    f.Employee_Code
+ORDER BY Total_Produced_Qty DESC;
+
+--  Employee Efficiency
+SELECT
+    Employee_Code,
+    ROUND(AVG(Efficiency_Rate_Pct), 2) AS Avg_Efficiency
+FROM fact_production
+GROUP BY
+    Employee_Code
+ORDER BY Avg_Efficiency DESC;
+
+-- 6.Operation Analysis
+--  Operation-wise Production
+SELECT
+    o.Operation_Code,
+    o.Operation_Name,
+    SUM(f.Produced_Qty) AS Total_Produced_Qty
+FROM fact_production f
+JOIN dim_operation o
+    ON f.Operation_Code = o.Operation_Code
+GROUP BY
+    o.Operation_Code,
+    o.Operation_Name
+ORDER BY Total_Produced_Qty DESC;
+
+-- Operation Efficiency
+SELECT
+    o.Operation_Code,
+    o.Operation_Name,
+    ROUND(AVG(f.Efficiency_Rate_Pct), 2) AS Avg_Efficiency
+FROM fact_production f
+JOIN dim_operation o
+    ON f.Operation_Code = o.Operation_Code
+GROUP BY
+    o.Operation_Code,
+    o.Operation_Name
+ORDER BY Avg_Efficiency DESC;
+
+--  Operation Cost
+SELECT
+    o.Operation_Code,
+    o.Operation_Name,
+    o.Standard_Cost_Per_Hour
+FROM dim_operation o
+ORDER BY o.Standard_Cost_Per_Hour DESC;
+
+-- 7.Department Analysis
+
+--  Department-wise Rejection Rate
+SELECT
+    Dept_id,
+    SUM(Produced_Qty) AS Produced_Qty,
+    SUM(Rejected_Qty) AS Rejected_Qty,
+    ROUND(
+        SUM(Rejected_Qty) * 100.0 /
+        NULLIF(SUM(Produced_Qty), 0),
+        2
+    ) AS Rejection_Rate
+FROM fact_production
+GROUP BY Dept_id
+HAVING SUM(Produced_Qty) > 0
+ORDER BY Rejection_Rate DESC;
+
+--  Department-wise Efficiency
+	SELECT
+    Dept_id,
+    ROUND(AVG(Efficiency_Rate_Pct), 2) AS Avg_Efficiency
+FROM fact_production
+GROUP BY Dept_id
+ORDER BY Avg_Efficiency DESC;
+
+-- Department-wise Cost
+SELECT
+    Dept_id,
+    ROUND(SUM(Per_Day_Machine_Cost), 2) AS Total_Machine_Cost
+FROM fact_production
+GROUP BY Dept_id
+ORDER BY Total_Machine_Cost DESC;
+
